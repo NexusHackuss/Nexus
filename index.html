@@ -89,8 +89,12 @@ const HP=m=>40+eff(m).D*3+S(D[m.id])*25,DPm=m=>40+eff(m).I*2,mi=x=>x.g?'defesa':
 function gx(m,x){m.xp=(m.xp||0)+x;m.lv=m.lv||1;while(m.lv<100&&m.xp>=xpn(m.lv)){m.xp-=xpn(m.lv);m.lv++}if(m.lv>=100)m.xp=0}
 const bonus=e=>e.cm?0:S(e)*3+(e.ty==='side'?12:e.ty==='spirit'?8:e.ty==='jog'?20:e.ty==='armor'?5:e.ty==='burst'?25:0);
 function load(){try{G=JSON.parse((DB?DBS:localStorage.getItem(SK()))||(!DB&&Object.keys(accs()).length<2&&localStorage.getItem('dd1'))||'null')}catch(e){}
- if(!G)G={coins:50,free:FREE,day:'',extra:0,team:[],act:0,inv:{armor:0,burst:0},log:'',seen:{}};G.box=G.box||[];[...G.team,...G.box].forEach(x=>{if(!D[x.id])x.id=MAPID[x.id]||'koromon';x.root=(x.root&&D[x.root])?x.root:root(x.id);x.abi=x.abi||0;x.tp=x.tp||Object.fromEntries(ST.map(s=>[s,Math.ceil((x[s]||0)/3)]));x.lv=x.lv||Math.max(1,LV[(D[x.id]||{st:1}).st]||1)});G.inv.spirit=G.inv.spirit||0;G.mp=G.mp||0;G.acc=G.acc||0;G.last=Date.now();tick()}
-function save(){if(DB&&U){clearTimeout(ST_);ST_=setTimeout(()=>DB.doc('data/users/'+UID+'/save').set({j:JSON.stringify(G)}).catch(()=>{}),800);return}try{localStorage.setItem(SK(),JSON.stringify(G))}catch(e){}}
+ if(!G)G={coins:50,free:FREE,day:'',extra:0,team:[],act:0,inv:{armor:0,burst:0},log:'',seen:{}};G.box=G.box||[];[...G.team,...G.box].forEach(x=>{if(!D[x.id])x.id=MAPID[x.id]||'koromon';x.root=(x.root&&D[x.root])?x.root:root(x.id);x.abi=x.abi||0;x.tp=x.tp||Object.fromEntries(ST.map(s=>[s,Math.ceil((x[s]||0)/3)]));x.lv=x.lv||Math.max(1,LV[(D[x.id]||{st:1}).st]||1)});G.inv.spirit=G.inv.spirit||0;G.mp=G.mp||0;G.acc=G.acc||0;G.last=Date.now();tick();LASTJ=sig()}
+let LASTJ='',SYNC='';
+const sig=()=>JSON.stringify(Object.assign({},G,{log:'',acc:0,last:0,_t:0}));
+function save(){if(DB&&U){const j=sig();if(j===LASTJ)return;LASTJ=j;G._t=Date.now();clearTimeout(ST_);ST_=setTimeout(()=>{ST_=0;DB.doc('data/users/'+UID+'/save').set({j:JSON.stringify(G)}).then(()=>{SYNC='ok'}).catch(()=>{SYNC='err'})},400);return}try{localStorage.setItem(SK(),JSON.stringify(G))}catch(e){}}
+function flush(){if(DB&&U&&ST_){clearTimeout(ST_);ST_=0;DB.doc('data/users/'+UID+'/save').set({j:JSON.stringify(G)}).then(()=>{SYNC='ok'}).catch(()=>{SYNC='err'})}}
+async function pull(){if(!(DB&&U)||ST_||(B&&!B.end))return;try{const z=await DB.doc('data/users/'+UID+'/save').get();if(!z.exists)return;const o=JSON.parse(z.data().j);if((o._t||0)>(G._t||0)){DBS=z.data().j;const keep=tab;load();LASTJ=sig();tab=keep;G.log='☁️ Progresso atualizado de outro dispositivo.'}}catch(e){}}
 function tick(){if(!G)return;const n=Date.now(),dt=Math.min(n-(G.last||n),60000);G.last=n;if(G.free>=FREE){G.acc=0;return}G.acc=(G.acc||0)+dt;while(G.acc>=1800000&&G.free<FREE){G.acc-=1800000;G.free++}if(G.free>=FREE)G.acc=0}
 const M=()=>G.team[G.act];
 function newMon(id){G.seen[id]=1;return{id,root:id,xp:0,lv:1,F:0,D:0,V:0,I:0}}
@@ -132,10 +136,10 @@ function turn(i){const m=M(),mv=mvs(m)[i];if(B.end||mv.c>B.me.dp||mv.sg&&B.me.cd
  const seq=pf?[[B.me,B.en,mv,me],[B.en,B.me,emv,en]]:[[B.en,B.me,emv,en],[B.me,B.en,mv,me]];
  for(const s of seq){if(B.me.hp<=0||B.en.hp<=0)break;step(...s)}
  B.me.dp=Math.min(B.me.mdp,B.me.dp+5+Math.floor(B.me.I/20));B.en.dp=Math.min(B.en.mdp,B.en.dp+5+Math.floor(B.en.I/20));B.me.cd=Math.max(0,B.me.cd-1);
- if(B.en.hp<=0){const k=B.k,bm=(G.boost&&G.boost.left>0)?G.boost.m:1,sg=[1,2,4,6,8][k],c=Math.round([40,90,200,400,900][k]*(.8+R()*.4))*bm,x=[12,26,55,110,260][k]*bm,pg=[1,2,4,6,4][k]*bm,s=ST[Math.floor(R()*4)];if(bm>1)G.boost.left--;G.coins+=c;gx(m,x);G.mp+=pg;m[s]+=sg;m.w=(m.w||0)+1;G.w=(G.w||0)+1;let dr='';if(k===4){G.inv.extreme=(G.inv.extreme||0)+1;m.inf=(m.inf||0)+1;G.inf=(G.inf||0)+1;dr=' 🎁 Cristal Extremo!'}B.end=1;B.log.push(`🏆 Vitória! +${c} moedas, +${x} XP, +${pg} PG, +${sg} ${SN[s]}.${dr}${bm>1?' 🚀 Boost x'+bm:''}`)}
+ if(B.en.hp<=0){const k=B.k,bm=(G.boost&&G.boost.left>0)?G.boost.m:1,sg=[1,2,4,6,8][k],c=Math.round([40,120,500,2000,10000][k]*(.8+R()*.4))*bm,x=[12,26,55,110,260][k]*bm,pg=(R()<[.15,.25,.4,.6,1][k]?[1,1,1,2,3][k]:0)*bm,s=ST[Math.floor(R()*4)];if(bm>1)G.boost.left--;G.coins+=c;gx(m,x);G.mp+=pg;m[s]+=sg;m.w=(m.w||0)+1;G.w=(G.w||0)+1;let dr='';if(k===4){G.inv.extreme=(G.inv.extreme||0)+1;m.inf=(m.inf||0)+1;G.inf=(G.inf||0)+1;dr=' 🎁 Cristal Extremo!'}B.end=1;B.log.push(`🏆 Vitória! +${c} moedas, +${x} XP${pg?', +'+pg+' PG':''}, +${sg} ${SN[s]}.${dr}${bm>1?' 🚀 Boost x'+bm:''}`)}
  else if(B.me.hp<=0){gx(m,1);if(G.boost&&G.boost.left>0)G.boost.left--;m.l=(m.l||0)+1;G.l=(G.l||0)+1;B.end=2;B.log.push('💥 Seu Digimon foi derrotado... +1 XP')}
  save();draw()}
-const INH=300;let CF=null,U=null,REG=false,ERR='';
+const INH=30000;let CF=null,U=null,REG=false,ERR='';
 function am(A,T){if(A==='No'||T==='No')return 1;if(A==='Va'&&T==='Vi'||A==='Vi'&&T==='Da'||A==='Da'&&T==='Va')return 1.25;if(A==='Un'&&'ViDaVa'.includes(T))return 1.25;if(A==='Fr'&&T==='Un')return 1.25;if(A==='Dr'&&T!=='Dr')return 1.25;return 1}
 function tm(n){const m=M();m.ml=m.ml||{};if((m.ml[n]||1)>=10)return;if(G.mp<=0){G.log='Sem pontos de golpe (PG)! Ganhe em batalhas ou compre na loja.';return draw()}
  G.mp--;m.ml[n]=(m.ml[n]||1)+1;G.log=`${n} subiu para Nv ${m.ml[n]}`;save();draw()}
@@ -246,7 +250,7 @@ function reqTxt(r){const a=ST.filter(s=>r[s]).map(s=>SN[s]+' '+r[s]+' pts').join
 const bar=(v,mx,c)=>`<div class="bar ${c}"><i style="width:${Math.max(0,v/mx*100)}%"></i></div>`;
 function bc(x,d){return`<div class="c"><div class="big">${d.em}</div><b>${d.nm}</b><div>${tags(d)}</div><div class="mu">HP ${x.hp}/${x.mx}</div>${bar(x.hp,x.mx,'h')}<div class="mu">DP ${x.dp}/${x.mdp}</div>${bar(x.dp,x.mdp,'d')}</div>`}
 function draw(){if(!U)return authUI();tick();const m=M(),v=document.getElementById('v');
- document.getElementById('top').innerHTML=`<span>💰 ${INFM()?'∞':G.coins}</span><span>🎯 Treino: ${G.free}/${FREE}${G.extra?' +'+G.extra:''}${G.free<FREE?' (próx. '+Math.ceil((1800000-G.acc)/60000)+'min)':''}</span><span>🎒 Armor ${G.inv.armor} · Spirit ${G.inv.spirit} · PG ${G.mp} · Overload ${G.inv.overload||0} · Cristal ${G.inv.extreme||0}${G.boost&&G.boost.left>0?' · 🚀 x'+G.boost.m+' ('+G.boost.left+')':''}</span>`;
+ document.getElementById('top').innerHTML=`<span>💰 ${INFM()?'∞':G.coins}</span><span>🎯 Treino: ${G.free}/${FREE}${G.extra?' +'+G.extra:''}${G.free<FREE?' (próx. '+Math.ceil((1800000-G.acc)/60000)+'min)':''}</span><span>🎒 Armor ${G.inv.armor} · Spirit ${G.inv.spirit} · PG ${G.mp} · Overload ${G.inv.overload||0} · Cristal ${G.inv.extreme||0}${G.boost&&G.boost.left>0?' · 🚀 x'+G.boost.m+' ('+G.boost.left+')':''}${DB?(SYNC==='err'?' · ⚠️ sem sincronizar':' · ☁️'):''}</span>`;
  const tabs=[['dg','Digimon'],['tr','Treino'],['mv','Golpes'],['bt','Batalha'],['bx','Box'],['sh','Loja'],['dx','Dex'],['pf','Perfil'],...(ADMF()?[['ad','Admin']]:[])];
  document.getElementById('nav').innerHTML=G.team.length?tabs.map(t=>`<button class="${tab===t[0]?'on':''}" onclick="T('${t[0]}')">${t[1]}</button>`).join(''):'';
  let h='';
@@ -289,5 +293,5 @@ for(const k in D)D[k].emo=D[k].em;
 (async()=>{const C=window.SB_CONFIG||{};
  if(C.url&&C.key&&window.supabase){SB=window.supabase.createClient(nu(C.url),String(C.key).trim());REG=false;try{await sbSync();const{data}=await SB.auth.getSession();if(data.session)await sbIn(data.session.user)}catch(e){console.error(e)}}
  else{SHOP=lj('dd_shop')||SHOP0;if(lj('dd_shopv')!==2){SHOP0.slice(-2).forEach(i=>{if(!SHOP.some(x=>x.fx===i.fx))SHOP.push(i)});localStorage.setItem('dd_shop',JSON.stringify(SHOP));localStorage.setItem('dd_shopv','2')}HID=lj('dd_hide')||[];ED=lj('dd_edit')||{};EG=lj('dd_eggs')||EG;CU=cu0();SP=sp0();for(const id in ED)if(D[id])Object.assign(D[id],ED[id]);Object.values(D).forEach(d=>{if(d.ty==='burst'&&d.st===7)d.st=8});for(const k in D)setEm(k);syncC(CU);try{U=localStorage.getItem('dd_sess')}catch(e){}if(!(U&&accs()[U]))U=null;else load();}
- draw()})();setInterval(()=>{if(U&&tab!=='ad')draw()},30000);
+ draw()})();setInterval(()=>{if(U&&tab!=='ad')pull().then(draw)},30000);if(document.addEventListener){document.addEventListener('visibilitychange',()=>{if(!U)return;if(document.hidden)flush();else pull().then(draw)});if(window.addEventListener){window.addEventListener('pagehide',flush);window.addEventListener('focus',()=>{if(U)pull().then(draw)})}}
 </script></body></html>
