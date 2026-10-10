@@ -106,8 +106,8 @@ function noticeHTML(){return NQ.length?`<div class="ov nov" onclick="nclose()"><
 const esc=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const rd=()=>{if(tab!=='ad')draw()};
 const sig=()=>JSON.stringify(Object.assign({},G,{log:'',acc:0,last:0,_t:0}));
-function save(){if(DB&&U){const j=sig();if(j===LASTJ)return;LASTJ=j;G._t=Date.now();clearTimeout(ST_);ST_=setTimeout(()=>{ST_=0;DB.doc('data/users/'+UID+'/save').set({j:JSON.stringify(G)}).then(()=>{SYNC='ok';lbPush()}).catch(()=>{SYNC='err'})},400);return}try{localStorage.setItem(SK(),JSON.stringify(G))}catch(e){}}
-function flush(){if(DB&&U&&ST_){clearTimeout(ST_);ST_=0;DB.doc('data/users/'+UID+'/save').set({j:JSON.stringify(G)}).then(()=>{SYNC='ok';lbPush()}).catch(()=>{SYNC='err'})}}
+function save(){if(DB&&U){const j=sig();if(j===LASTJ)return;LASTJ=j;G._t=Date.now();clearTimeout(ST_);ST_=setTimeout(()=>{ST_=0;DB.doc('data/users/'+UID+'/save').set({j:JSON.stringify(G)}).then(r=>{SYNC='ok';adoptSrv(r);lbPush()}).catch(()=>{SYNC='err'})},400);return}try{localStorage.setItem(SK(),JSON.stringify(G))}catch(e){}}
+function flush(){if(DB&&U&&ST_){clearTimeout(ST_);ST_=0;return DB.doc('data/users/'+UID+'/save').set({j:JSON.stringify(G)}).then(r=>{SYNC='ok';adoptSrv(r);lbPush()}).catch(()=>{SYNC='err'})}}
 async function pull(){if(!(DB&&U)||ST_||(B&&!B.end))return;try{await refreshAdm();await walletLoad();const z=await DB.doc('data/users/'+UID+'/save').get();if(!z.exists)return;const o=JSON.parse(z.data().j);if((o._t||0)>(G._t||0)){DBS=z.data().j;const keep=tab;load();LASTJ=sig();tab=keep;if(typeof chkEpoch==='function')chkEpoch();G.log='☁️ Progresso atualizado de outro dispositivo.'}}catch(e){}}
 function tick(){if(!G)return;const n=Date.now(),dt=Math.min(n-(G.last||n),60000);G.last=n;if(G.free>=FREE){G.acc=0;return}G.acc=(G.acc||0)+dt;while(G.acc>=1800000&&G.free<FREE){G.acc-=1800000;G.free++}if(G.free>=FREE)G.acc=0}
 const M=()=>G.team[G.act];
@@ -207,8 +207,8 @@ const CFGK=['dd_shop','dd_shop2','dd_edit','dd_eggs','dd_hide','dd_story'],PHRE=
 function mkShim(){const T=p=>p.startsWith('data/users/')?['saves','user_id',UID]:p.startsWith('custom/')?['custom_digimon','id',p.slice(7)]:['sprites','id',p.slice(8)];
  return{doc:p=>{const[t,k,id]=T(p);return{
   async get(){const{data}=await SB.from(t).select('*').eq(k,id).maybeSingle();return{exists:!!data,data:()=>data?(t==='sprites'?{u:data.u}:data.data):undefined}},
-  async set(v){const row=t==='saves'?{user_id:id,data:v,updated_at:new Date().toISOString()}:t==='sprites'?{id,u:v.u}:{id,data:v};const{error}=await SB.from(t).upsert(row);if(error)throw error},
-  async delete(){const{error}=await SB.from(t).delete().eq(k,id);if(error)throw error}}}}}
+  async set(v){if(t==='saves'){const r=await SB.rpc('save_game',{p_j:v.j});if(r.error)throw r.error;return r.data}const row=t==='saves'?{user_id:id,data:v,updated_at:new Date().toISOString()}:t==='sprites'?{id,u:v.u}:{id,data:v};const{error}=await SB.from(t).upsert(row);if(error)throw error},
+  async delete(){if(t==='saves'){const r=await SB.rpc('delete_my_save');if(r.error)throw r.error;return}const{error}=await SB.from(t).delete().eq(k,id);if(error)throw error}}}}}
 function applyCfg(rows){rows.forEach(r=>{if(r.key==='dd_shop'&&r.data)SHOP=r.data;if(r.key==='dd_edit')ED=r.data||{};if(r.key==='dd_eggs'&&r.data)EG=r.data;if(r.key==='dd_hide')HID=r.data||[];if(r.key==='dd_story'&&r.data)STORY=r.data;if(r.key==='dd_shop2'&&r.data)SHOP2=r.data;if(r.key==='reset_epoch')EPOCH=(r.data&&r.data.t)||0});for(const id in ED)if(D[id])Object.assign(D[id],ED[id]);Object.values(D).forEach(d=>{if(d.ty==='burst'&&d.st===7)d.st=8})}
 async function sbSync(){const a=async()=>{const[c,z,g]=await Promise.all([SB.from('custom_digimon').select('data'),SB.from('sprites').select('id,u'),SB.from('game_config').select('key,data')]);SP={};(z.data||[]).forEach(r=>SP[r.id]=r.u);applyCfg(g.data||[]);chkEpoch();syncC((c.data||[]).map(r=>r.data));for(const k in D)setEm(k);if(U&&tab!=='ad')draw()};await a();
  SB.channel('dg').on('postgres_changes',{event:'*',schema:'public',table:'custom_digimon'},a).on('postgres_changes',{event:'*',schema:'public',table:'sprites'},a).on('postgres_changes',{event:'*',schema:'public',table:'game_config'},a).on('postgres_changes',{event:'INSERT',schema:'public',table:'gifts'},p=>{if(!U||!G||!p.new)return;G.gl=G.gl||[];if(G.gl.includes(p.new.id))return;G.gl.push(p.new.id);if(G.gl.length>50)G.gl.shift();applyGift(p.new.data)}).subscribe()}
@@ -282,17 +282,15 @@ const uid=()=>Math.random().toString(36).slice(2,9),isOn=()=>typeof SB!=='undefi
 const wkLabel=w=>{const m=/^(\d+)-W(\d+)$/.exec(w||'');return m?'Semana '+(+m[2])+'/'+m[1]:w};
 const pvSnap=m=>({id:m.id,lv:m.lv||1,F:m.F,D:m.D,V:m.V,I:m.I,ml:m.ml||{},inh:m.inh||[],sl:m.sl||[],sg2:m.sg2||0,u:m.u});
 const pvTeam=()=>(G.pvp||[]).map(u=>allMons().find(x=>x.u===u)).filter(x=>x&&D[x.id]);
-async function pvpSync(force){if(!isOn())return;const t=pvTeam();if(t.length!==3)return;const j=JSON.stringify(t.map(pvSnap));if(!force&&j===PVS)return;PVS=j;try{await SB.rpc('pvp_set_team',{p_team:t.map(pvSnap),p_power:t.reduce((a,x)=>a+pw(x),0)})}catch(e){}}
+async function pvpSync(force){if(!isOn())return;if(ST_)await flush();const t=pvTeam();if(t.length!==3)return;const j=JSON.stringify(t.map(pvSnap));if(!force&&j===PVS)return;PVS=j;try{await SB.rpc('pvp_set_team',{p_team:t.map(pvSnap),p_power:t.reduce((a,x)=>a+pw(x),0)})}catch(e){}}
 async function lbPush(){if(!isOn())return;const n=Date.now();if(n-LBT<60000)return;LBT=n;
- try{if(!ADMF()){const ms=allMons().filter(x=>D[x.id]),b=ms.reduce((a,x)=>(x.abi||0)>(a.abi||0)?x:a,{abi:0}),seen=Object.keys(G.seen).filter(k=>D[k]).length;
-  await SB.rpc('lb_update',{p_wins:G.w||0,p_losses:G.l||0,p_inf:G.inf||0,p_coins:Math.round(G.coins||0),p_dex:seen,p_dex_total:Object.keys(D).length,p_abi:b.abi||0,p_abi_digimon:b.id||null,p_abi_lv:b.lv||null})}
-  await pvpSync(false)}catch(e){}}
+ try{await pvpSync(false)}catch(e){}}
 async function pvLoad(){if(!isOn())return;try{await pvpSync(true);const r=await SB.rpc('pvp_opponents');PVO=r.data||[];const s=await SB.from('pvp_rank_perm').select('*').eq('user_id',UID).maybeSingle();const st=await SB.from('pvp_stats').select('points').eq('user_id',UID).maybeSingle();PVSTAT=(st&&st.data)||(s&&s.data)||null}catch(e){}draw()}
 async function phLoad(){if(!isOn())return;try{const r=await SB.rpc('pvp_history');PVH=r.data||[]}catch(e){}draw()}
 async function medLoad(){if(!isOn())return;try{const r=await SB.from('medals').select('week,place').eq('user_id',UID).order('week',{ascending:false});MED=r.data||[]}catch(e){}draw()}
 async function rkLoad(){if(!isOn())return;try{await SB.rpc('close_pending_weeks');
- if(RKC==='pvp'){if(RKP==='w'){const wk=(await SB.rpc('pvp_week')).data;const r=await SB.from('pvp_rank_week').select('*').eq('week',wk).order('points',{ascending:false}).limit(50);RKD=r.data||[]}else{const r=await SB.from('pvp_rank_perm').select('*').order('points',{ascending:false}).limit(50);RKD=r.data||[]}}
- else{const col={wins:'wins',infernals:'infernals',coins:'coins',abi:'abi_best',dex:'dex_count'}[RKC];const r=await SB.from('lb_public').select('*').order(col,{ascending:false}).limit(50);RKD=(r.data||[]).filter(x=>x[col]>0)}}catch(e){RKD=[]}draw()}
+ if(RKC==='pvp'){if(RKP==='w'){const wk=(await SB.rpc('pvp_week')).data;const r=await SB.from('pvp_rank_week').select('*').eq('week',wk).order('points',{ascending:false}).limit(50);if(r.error)throw r.error;RKD=r.data||[]}else{const r=await SB.from('pvp_rank_perm').select('*').order('points',{ascending:false}).limit(50);if(r.error)throw r.error;RKD=r.data||[]}}
+ else{const col={wins:'wins',infernals:'infernals',coins:'coins',abi:'abi_best',dex:'dex_count'}[RKC];const r=await SB.from('lb_public').select('*').order(col,{ascending:false}).limit(50);if(r.error)throw r.error;RKD=(r.data||[]).filter(x=>x[col]>0)}}catch(e){RKD=[];G.log='⚠️ Ranking indisponível: '+((e&&e.message)||e)}draw()}
 function pvTog(u){const i=PSEL.indexOf(u);if(i>=0)PSEL.splice(i,1);else if(PSEL.length<3)PSEL.push(u);else{G.log='A equipe PvP tem no máximo 3 Digimon.'}draw()}
 function pvpSave(){if(PSEL.length!==3)return;G.pvp=PSEL.slice();save();pvpSync(true);G.log='✅ Equipe PvP salva. Ela também defende quando você é desafiado.';draw()}
 async function startPvp(i){const o=PVO[i];if(!o||(B&&!B.end))return;const mine=pvTeam();if(mine.length!==3){G.log='Monte sua equipe PvP de 3 Digimon na aba Equipe.';return draw()}
@@ -394,7 +392,7 @@ function syncSlots(m){if(!D[m.id])return;const nat=natMoves(m),inh=m.inh||[],ok=
  if(!sl){sl=[];inh.forEach(x=>{if(sl.length<3&&!sl.includes(x.n))sl.push(x.n)})}
  sl=sl.filter((n,i)=>ok(n)&&sl.indexOf(n)===i);[...nat].reverse().forEach(x=>{if(sl.length<3&&!sl.includes(x.n))sl.push(x.n)});
  m.sl=sl.slice(0,3);m.inh=inh.filter(x=>m.sl.includes(x.n))}
-function clampAll(){if(!G)return;let ch=0;allMons().forEach(x=>{if(!D[x.id])return;if(x.pot==null)x.pot=x.rb||0;const c=statCap(x);ST.forEach(s=>{if(x[s]>c){x[s]=c;ch=1}});if((x.abi||0)>ABI_MAX){x.abi=ABI_MAX;ch=1}syncSlots(x)});
+function clampAll(){if(!G)return;G.w=G.w||0;G.l=G.l||0;G.inf=G.inf||0;G.mp=G.mp||0;G.boxx=G.boxx||0;G.infT=G.infT||0;let ch=0;allMons().forEach(x=>{if(!D[x.id])return;if(x.pot==null)x.pot=x.rb||0;x.rb=x.rb||0;x.xp=x.xp||0;x.abi=x.abi||0;x.lv=x.lv||1;x.sg2=x.sg2?1:0;const c=statCap(x);ST.forEach(s=>{if(x[s]>c){x[s]=c;ch=1}});if((x.abi||0)>ABI_MAX){x.abi=ABI_MAX;ch=1}syncSlots(x)});
  if(!G.bal2){G.bal2=1;if(ch)G.log='⚖️ Rebalanceamento aplicado: os status agora têm um limite que cresce a cada Reborn. Seus Digimon foram ajustados. Veja o limite na aba Treino.'}}
 function mvs(m){const d=D[m.id],mx=m.mdp||DPm(m),L=(n,p)=>Math.round(p*(1+.08*(((m.ml||{})[n]||1)-1))),nat=natMoves(m),inh=m.inh||[];let sl=Array.isArray(m.sl)&&m.sl.length?m.sl:null;
  if(!sl){sl=[];inh.forEach(x=>{if(sl.length<3)sl.push(x.n)});[...nat].reverse().forEach(x=>{if(sl.length<3&&!sl.includes(x.n))sl.push(x.n)})}
@@ -421,7 +419,7 @@ function buy(k){const it=SHOP[k];if(!it)return;if(!INFM()&&G.coins<it.p){G.log='
  if(it.fx==='egg'&&G.box.length>=boxCap()&&G.team.length>=TM){G.log='Box cheia.';return draw()}
  if(!INFM())G.coins-=it.p;grantFx(it);save();draw()}
 async function buy2(k){const it=SHOP2[k];if(!it)return;const p=Math.max(1,it.p|0);
- if(isOn()){const r=await SB.rpc('gem_spend',{p_cost:p});if(r.error){G.log='⚠️ '+r.error.message;return draw()}GEMS=r.data}
+ if(isOn()){const r=await SB.rpc('gem_buy',{p_idx:k});if(r.error){G.log='⚠️ '+r.error.message;return draw()}GEMS=r.data}
  else{if(!INFM()&&(G.gems||0)<p){G.log='Gemas insuficientes.';return draw()}if(!INFM())G.gems=(G.gems||0)-p}
  if(it.fx==='egg'&&G.box.length>=boxCap()&&G.team.length>=TM){G.log='Box cheia.';return draw()}
  grantFx(it);save();draw()}
@@ -589,6 +587,12 @@ async function admAdd(){const b=admSnap(),g=i=>document.getElementById(i),f=g('a
 
 /* ===== v4: HUD da ficha centralizada (modelo da imagem) ===== */
 function hudTags(d){const t=[SG[d.st]];if(TY[d.ty]&&TY[d.ty]!==SG[d.st])t.push(TY[d.ty]);return t.map(x=>`<span class="tag">${x}</span>`).join(' ')+' '+tags(d)}
+
+
+/* ===== v5: o servidor valida o save (anti-trapaça) ===== */
+const canon=o=>Array.isArray(o)?o.map(canon):(o&&typeof o==='object'?Object.keys(o).sort().reduce((a,k)=>(a[k]=canon(o[k]),a),{}):o);
+const stripT=x=>{x=JSON.parse(JSON.stringify(x));delete x.log;delete x.acc;delete x.last;delete x._t;return JSON.stringify(canon(x))};
+function adoptSrv(r){if(typeof r!=='string'||ST_)return;try{const o=JSON.parse(r);if(stripT(o)!==stripT(G)){DBS=r;const keep=tab;load();LASTJ=sig();tab=keep;NQ.push('⚠️ O servidor corrigiu alguns valores do seu progresso (limites do jogo).')}}catch(e){}}
 
 for(const k in D)D[k].emo=D[k].em;
 (async()=>{const C=window.SB_CONFIG||{};
